@@ -1,4 +1,5 @@
 import Loan from '../models/Loan.js';
+import Client from '../models/Client.js';
 import LoanProduct from '../models/LoanProduct.js';
 import { buildSchedule } from '../services/loanService.js';
 import { decorateSchedule } from '../services/penaltyService.js';
@@ -34,16 +35,34 @@ export const get = asyncHandler(async (req, res) => {
 
 export const create = asyncHandler(async (req, res) => {
   const { client, product: productId, principal, numberOfInstallments, firstDueDate, remarks } = req.body;
-  const product = await LoanProduct.findById(productId);
+  if (!client || !productId) return res.status(400).json({ message: 'Client and product are required' });
+
+  const amount = Number(principal);
+  const installments = Number(numberOfInstallments);
+  if (!Number.isFinite(amount) || amount <= 0)
+    return res.status(400).json({ message: 'Invalid principal' });
+  if (!Number.isInteger(installments) || installments < 1)
+    return res.status(400).json({ message: 'Invalid number of installments' });
+  if (Number.isNaN(new Date(firstDueDate).getTime()))
+    return res.status(400).json({ message: 'Invalid first due date' });
+
+  const [clientDoc, product] = await Promise.all([
+    Client.findById(client),
+    LoanProduct.findById(productId),
+  ]);
+  if (!clientDoc) return res.status(400).json({ message: 'Invalid client' });
   if (!product || !product.active) return res.status(400).json({ message: 'Invalid product' });
-  if (principal <= 0) return res.status(400).json({ message: 'Invalid principal' });
+  if (amount < product.minAmount || amount > product.maxAmount)
+    return res.status(400).json({
+      message: `Principal must be between ${product.minAmount} and ${product.maxAmount}`,
+    });
 
   const built = buildSchedule({
-    principal,
+    principal: amount,
     annualRate: product.annualRate,
     interestType: product.interestType,
     frequency: product.frequency,
-    numberOfInstallments,
+    numberOfInstallments: installments,
     firstDueDate: new Date(firstDueDate),
   });
 
@@ -51,12 +70,12 @@ export const create = asyncHandler(async (req, res) => {
     client,
     product: product._id,
     segment: product.segment,
-    principal,
+    principal: amount,
     annualRate: product.annualRate,
     interestType: product.interestType,
     frequency: product.frequency,
-    numberOfInstallments,
-    processingFee: Math.round(principal * (product.processingFeePct / 100) * 100) / 100,
+    numberOfInstallments: installments,
+    processingFee: Math.round(amount * (product.processingFeePct / 100) * 100) / 100,
     firstDueDate: new Date(firstDueDate),
     totalInterest: built.totalInterest,
     totalPayable: built.totalPayable,

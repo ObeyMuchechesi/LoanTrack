@@ -4,7 +4,8 @@ import { signToken } from '../utils/token.js';
 
 export const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ message: 'Email and password required' });
+  if (typeof email !== 'string' || typeof password !== 'string' || !email || !password)
+    return res.status(400).json({ message: 'Email and password required' });
 
   const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
   if (!user || !(await user.matchPassword(password)))

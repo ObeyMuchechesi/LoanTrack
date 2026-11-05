@@ -11,11 +11,12 @@ import NewLoan from './pages/NewLoan.jsx';
 import LoanDetail from './pages/LoanDetail.jsx';
 import Reports from './pages/Reports.jsx';
 import Users from './pages/Users.jsx';
+import { withShare } from './utils/share.js';
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <Spinner />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to={withShare('/login')} replace />;
   return <Layout>{children}</Layout>;
 }
 
@@ -31,7 +32,7 @@ export default function App() {
       <Route path="/loans/:id" element={<Protected><LoanDetail /></Protected>} />
       <Route path="/reports" element={<Protected><Reports /></Protected>} />
       <Route path="/users" element={<Protected><Users /></Protected>} />
-      <Route path="*" element={<Navigate to="/" />} />
+      <Route path="*" element={<Navigate to={withShare('/')} replace />} />
     </Routes>
   );
 }

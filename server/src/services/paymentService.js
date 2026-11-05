@@ -3,12 +3,18 @@ import Payment from '../models/Payment.js';
 
 const round = (n) => Math.round(n * 100) / 100;
 
+const badRequest = (message) => Object.assign(new Error(message), { status: 400 });
+
 export async function applyPayment({ loanId, amount, method, reference, collectedBy, notes }) {
+  if (!loanId) throw badRequest('loanId is required');
+  if (!Number.isFinite(amount) || amount <= 0) throw badRequest('Invalid amount');
+
   const loan = await Loan.findById(loanId);
   if (!loan) throw Object.assign(new Error('Loan not found'), { status: 404 });
-  if (['closed', 'written_off', 'rejected'].includes(loan.status))
-    throw Object.assign(new Error(`Cannot pay a ${loan.status} loan`), { status: 400 });
-  if (amount <= 0) throw Object.assign(new Error('Invalid amount'), { status: 400 });
+
+  // Payments are only meaningful once funds have actually been disbursed.
+  if (!['disbursed', 'active', 'defaulted'].includes(loan.status))
+    throw badRequest(`Cannot pay a ${loan.status} loan`);
 
   let remaining = amount;
   const allocations = [];
@@ -21,7 +27,7 @@ export async function applyPayment({ loanId, amount, method, reference, collecte
     const applied = Math.min(due, remaining);
     if (applied <= 0) continue;
 
-    const intRatio = inst.interestDue / inst.totalDue;
+    const intRatio = inst.totalDue > 0 ? inst.interestDue / inst.totalDue : 0;
     const interestPart = round(applied * intRatio);
     const principalPart = round(applied - interestPart);
 
@@ -43,7 +49,7 @@ export async function applyPayment({ loanId, amount, method, reference, collecte
   }
 
   if (remaining > 0.01)
-    throw Object.assign(new Error(`Overpayment: ${remaining} exceeds outstanding balance`), { status: 400 });
+    throw badRequest(`Overpayment: ${remaining} exceeds outstanding balance`);
 
   loan.totalPaid = round(loan.totalPaid + amount);
   loan.outstanding = round(loan.outstanding - amount);

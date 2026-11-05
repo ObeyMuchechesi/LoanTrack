@@ -1,32 +1,46 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import api from '../api/client.js';
 import Modal from '../components/Modal.jsx';
+import { useLoad, errorMessage } from '../utils/useLoad.js';
+
+const blank = { name: '', email: '', password: '', role: 'officer' };
 
 export default function Users() {
-  const [users, setUsers] = useState([]);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'officer' });
+  const [form, setForm] = useState(blank);
   const [err, setErr] = useState('');
+  const [actionErr, setActionErr] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const load = () => api.get('/users').then((r) => setUsers(r.data));
-  useEffect(() => { load(); }, []);
+  const { data, error, loading, reload } = useLoad(
+    () => api.get('/users').then((r) => r.data), [], []
+  );
+  const users = Array.isArray(data) ? data : [];
 
   const save = async (e) => {
     e.preventDefault();
     setErr('');
+    setSaving(true);
     try {
       await api.post('/users', form);
       setOpen(false);
-      setForm({ name: '', email: '', password: '', role: 'officer' });
-      load();
+      setForm(blank);
+      reload();
     } catch (e) {
-      setErr(e.response?.data?.message || 'Failed');
+      setErr(errorMessage(e));
+    } finally {
+      setSaving(false);
     }
   };
 
   const toggle = async (u) => {
-    await api.patch(`/users/${u._id}`, { active: !u.active });
-    load();
+    setActionErr('');
+    try {
+      await api.patch(`/users/${u._id}`, { active: !u.active });
+      reload();
+    } catch (e) {
+      setActionErr(errorMessage(e));
+    }
   };
 
   return (
@@ -35,6 +49,12 @@ export default function Users() {
         <h1 className="text-2xl font-semibold">Users</h1>
         <button onClick={() => setOpen(true)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg">+ New User</button>
       </div>
+
+      {(error || actionErr) && (
+        <div role="alert" className="bg-red-50 text-red-700 text-sm rounded-lg p-3">
+          {actionErr || error} <button onClick={reload} className="underline ml-2">Retry</button>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <table className="w-full text-sm">
@@ -65,13 +85,16 @@ export default function Users() {
                 </td>
               </tr>
             ))}
+            {(users.length === 0 || loading) && (
+              <tr><td colSpan={5} className="p-4 text-center text-slate-400">{loading ? 'Loading...' : 'No users'}</td></tr>
+            )}
           </tbody>
         </table>
       </div>
 
       <Modal open={open} onClose={() => setOpen(false)} title="New user">
         <form onSubmit={save} className="space-y-3">
-          {err && <div className="bg-red-50 text-red-700 text-sm rounded-lg p-2">{err}</div>}
+          {err && <div role="alert" className="bg-red-50 text-red-700 text-sm rounded-lg p-2">{err}</div>}
           <input required placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
             className="w-full border border-slate-300 rounded-lg px-3 py-2" />
           <input required type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -83,7 +106,9 @@ export default function Users() {
             className="w-full border border-slate-300 rounded-lg px-3 py-2">
             {['admin', 'officer', 'collector', 'viewer'].map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
-          <button type="submit" className="w-full bg-brand-600 text-white py-2 rounded-lg">Create</button>
+          <button type="submit" disabled={saving} className="w-full bg-brand-600 text-white py-2 rounded-lg disabled:opacity-60">
+            {saving ? 'Creating...' : 'Create'}
+          </button>
         </form>
       </Modal>
     </div>

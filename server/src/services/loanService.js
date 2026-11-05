@@ -14,6 +14,10 @@ export function addPeriod(date, frequency, n) {
 
 const round = (n) => Math.round(n * 100) / 100;
 
+function invalid(message) {
+  return Object.assign(new Error(message), { status: 400 });
+}
+
 export function buildSchedule({
   principal,
   annualRate,
@@ -22,7 +26,15 @@ export function buildSchedule({
   numberOfInstallments,
   firstDueDate,
 }) {
+  if (!Number.isFinite(principal) || principal <= 0) throw invalid('Principal must be a positive number');
+  if (!Number.isFinite(annualRate) || annualRate < 0) throw invalid('Annual rate must be zero or greater');
+  if (!Number.isInteger(numberOfInstallments) || numberOfInstallments < 1 || numberOfInstallments > 360)
+    throw invalid('Number of installments must be a whole number between 1 and 360');
+  if (!['flat', 'reducing'].includes(interestType)) throw invalid('Invalid interest type');
+  if (Number.isNaN(new Date(firstDueDate).getTime())) throw invalid('Invalid first due date');
+
   const periodsPerYear = PERIODS_PER_YEAR[frequency];
+  if (!periodsPerYear) throw invalid('Invalid repayment frequency');
   const periodicRate = annualRate / 100 / periodsPerYear;
   const schedule = [];
   let totalInterest = 0;

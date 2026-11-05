@@ -1,36 +1,39 @@
-import { useEffect, useState } from 'react';
 import api from '../api/client.js';
+import { useLoad } from '../utils/useLoad.js';
 
 const fmt = (n) => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n || 0);
 
-export default function Reports() {
-  const [aging, setAging] = useState({});
-  const [collections, setCollections] = useState([]);
-  const [portfolio, setPortfolio] = useState([]);
+const buckets = [
+  ['current', 'Current'],
+  ['1-30', '1-30 days'],
+  ['31-60', '31-60 days'],
+  ['61-90', '61-90 days'],
+  ['90+', '90+ days'],
+];
 
-  useEffect(() => {
+export default function Reports() {
+  const { data, error, loading, reload } = useLoad(() =>
     Promise.all([
       api.get('/reports/aging'),
       api.get('/reports/collections'),
       api.get('/reports/portfolio'),
-    ]).then(([a, c, p]) => {
-      setAging(a.data);
-      setCollections(c.data);
-      setPortfolio(p.data);
-    });
-  }, []);
+    ]).then(([a, c, p]) => ({ aging: a.data || {}, collections: c.data || [], portfolio: p.data || [] }))
+  );
 
-  const buckets = [
-    ['current', 'Current'],
-    ['1-30', '1-30 days'],
-    ['31-60', '31-60 days'],
-    ['61-90', '61-90 days'],
-    ['90+', '90+ days'],
-  ];
+  const aging = data?.aging || {};
+  const collections = Array.isArray(data?.collections) ? data.collections : [];
+  const portfolio = Array.isArray(data?.portfolio) ? data.portfolio : [];
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Reports</h1>
+
+      {error && (
+        <div role="alert" className="bg-red-50 text-red-700 text-sm rounded-lg p-3">
+          {error} <button onClick={reload} className="underline ml-2">Retry</button>
+        </div>
+      )}
+      {loading && !data && <p className="text-slate-500 text-sm">Loading reports...</p>}
 
       <div className="bg-white p-6 rounded-xl border border-slate-200">
         <h2 className="font-medium mb-3">Aging buckets (installments)</h2>

@@ -23,11 +23,21 @@ export const update = asyncHandler(async (req, res) => {
   const { name, role, branch, active, password } = req.body;
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ message: 'Not found' });
+  if (active === false && String(user._id) === String(req.user._id))
+    return res.status(400).json({ message: 'You cannot disable your own account' });
   if (name) user.name = name;
   if (role) user.role = role;
   if (branch) user.branch = branch;
   if (active !== undefined) user.active = active;
-  if (password) user.password = password;
+  if (password) {
+    if (String(password).length < 6)
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    user.password = password;
+  }
   await user.save();
-  res.json(user);
+  // `password` is select:false, but assigning it above puts it back on the
+  // document, so always strip it before serialising.
+  const safe = user.toObject();
+  delete safe.password;
+  res.json(safe);
 });

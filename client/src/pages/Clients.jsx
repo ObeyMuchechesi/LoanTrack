@@ -1,27 +1,41 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import api from '../api/client.js';
 import Modal from '../components/Modal.jsx';
 import Badge from '../components/Badge.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useLoad, errorMessage } from '../utils/useLoad.js';
 
 const empty = { type: 'individual', name: '', phone: '', email: '', nationalId: '', address: '' };
 
 export default function Clients() {
   const { user } = useAuth();
-  const [clients, setClients] = useState([]);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(empty);
+  const [saveErr, setSaveErr] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const load = () => api.get(`/clients?q=${encodeURIComponent(q)}`).then((r) => setClients(r.data));
-  useEffect(() => { load(); }, [q]);
+  const { data, error, loading, reload } = useLoad(
+    () => api.get(`/clients?q=${encodeURIComponent(q)}`).then((r) => r.data),
+    [q],
+    []
+  );
+  const clients = Array.isArray(data) ? data : [];
 
   const save = async (e) => {
     e.preventDefault();
-    await api.post('/clients', form);
-    setOpen(false);
-    setForm(empty);
-    load();
+    setSaveErr('');
+    setSaving(true);
+    try {
+      await api.post('/clients', form);
+      setOpen(false);
+      setForm(empty);
+      reload();
+    } catch (err) {
+      setSaveErr(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const canCreate = ['admin', 'officer'].includes(user?.role);
@@ -36,6 +50,12 @@ export default function Clients() {
           </button>
         )}
       </div>
+
+      {error && (
+        <div role="alert" className="bg-red-50 text-red-700 text-sm rounded-lg p-3">
+          {error} <button onClick={reload} className="underline ml-2">Retry</button>
+        </div>
+      )}
 
       <input
         placeholder="Search by name, phone, or client #..."
@@ -65,8 +85,8 @@ export default function Clients() {
                 <td className="p-3"><Badge status={c.kycStatus} /></td>
               </tr>
             ))}
-            {clients.length === 0 && (
-              <tr><td colSpan={5} className="p-4 text-center text-slate-400">No clients</td></tr>
+            {(clients.length === 0 || loading) && (
+              <tr><td colSpan={5} className="p-4 text-center text-slate-400">{loading ? 'Loading...' : 'No clients'}</td></tr>
             )}
           </tbody>
         </table>
@@ -74,6 +94,7 @@ export default function Clients() {
 
       <Modal open={open} onClose={() => setOpen(false)} title="New client" wide>
         <form onSubmit={save} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {saveErr && <div role="alert" className="sm:col-span-2 bg-red-50 text-red-700 text-sm rounded-lg p-2">{saveErr}</div>}
           <select
             value={form.type}
             onChange={(e) => setForm({ ...form, type: e.target.value })}
@@ -116,7 +137,9 @@ export default function Clients() {
           />
           <div className="sm:col-span-2 flex justify-end gap-2 mt-2">
             <button type="button" onClick={() => setOpen(false)} className="px-4 py-2 rounded-lg border">Cancel</button>
-            <button type="submit" className="bg-brand-600 text-white px-4 py-2 rounded-lg">Save</button>
+            <button type="submit" disabled={saving} className="bg-brand-600 text-white px-4 py-2 rounded-lg disabled:opacity-60">
+              {saving ? 'Saving...' : 'Save'}
+            </button>
           </div>
         </form>
       </Modal>

@@ -1,25 +1,38 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/client.js';
 import StatCard from '../components/StatCard.jsx';
 import Badge from '../components/Badge.jsx';
+import { withShare } from '../utils/share.js';
+import { useLoad } from '../utils/useLoad.js';
 
 const fmt = (n) =>
   new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n || 0);
 
 export default function Dashboard() {
-  const [d, setD] = useState(null);
-  useEffect(() => {
-    api.get('/dashboard/summary').then((r) => setD(r.data));
-  }, []);
+  const { data: d, error, loading, reload } = useLoad(
+    () => api.get('/dashboard/summary').then((r) => r.data)
+  );
 
-  if (!d) return <p className="text-slate-500">Loading...</p>;
+  if (!d && loading) return <p className="text-slate-500">Loading...</p>;
+  if (!d) return (
+    <div role="alert" className="bg-red-50 text-red-700 text-sm rounded-lg p-4">
+      {error || 'Could not load the dashboard.'}
+      <button onClick={reload} className="ml-3 underline">Retry</button>
+    </div>
+  );
+
+  const recent = Array.isArray(d.recentLoans) ? d.recentLoans : [];
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div role="alert" className="bg-red-50 text-red-700 text-sm rounded-lg p-3">
+          {error} <button onClick={reload} className="underline ml-2">Retry</button>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <Link to="/loans/new" className="bg-brand-600 hover:bg-brand-700 text-white text-sm px-4 py-2 rounded-lg">
+        <Link to={withShare('/loans/new')} className="bg-brand-600 hover:bg-brand-700 text-white text-sm px-4 py-2 rounded-lg">
           + New Loan
         </Link>
       </div>
@@ -50,10 +63,10 @@ export default function Dashboard() {
             </tr>
           </thead>
           <tbody>
-            {d.recentLoans.map((l) => (
+            {recent.map((l) => (
               <tr key={l._id} className="border-t border-slate-100 hover:bg-slate-50">
                 <td className="p-3">
-                  <Link to={`/loans/${l._id}`} className="text-brand-600 hover:underline font-medium">
+                  <Link to={withShare(`/loans/${l._id}`)} className="text-brand-600 hover:underline font-medium">
                     {l.loanNo}
                   </Link>
                 </td>
@@ -63,7 +76,7 @@ export default function Dashboard() {
                 <td className="p-3"><Badge status={l.status} /></td>
               </tr>
             ))}
-            {d.recentLoans.length === 0 && (
+            {recent.length === 0 && (
               <tr><td colSpan={5} className="p-4 text-center text-slate-400">No loans yet</td></tr>
             )}
           </tbody>

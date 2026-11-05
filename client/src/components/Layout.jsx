@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Users, Wallet, FileText, Boxes, LogOut, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
+import { withShare } from '../utils/share.js';
 
 const nav = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -17,7 +18,7 @@ export default function Layout({ children }) {
 
   const handleLogout = () => {
     logout();
-    nav2('/login');
+    nav2(withShare('/login'));
   };
 
   const items = user?.role === 'admin' ? [...nav, { to: '/users', label: 'Users', icon: Shield }] : nav;
@@ -32,7 +33,7 @@ export default function Layout({ children }) {
             return (
               <Link
                 key={to}
-                to={to}
+                to={withShare(to)}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
                   active ? 'bg-brand-50 text-brand-700 font-medium' : 'text-slate-600 hover:bg-slate-100'
                 }`}

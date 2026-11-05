@@ -1,39 +1,50 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client.js';
+import { withShare } from '../utils/share.js';
+import { useLoad, errorMessage } from '../utils/useLoad.js';
 
 export default function NewLoan() {
   const nav = useNavigate();
-  const [clients, setClients] = useState([]);
-  const [products, setProducts] = useState([]);
   const [err, setErr] = useState('');
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     client: '', product: '', principal: 1000, numberOfInstallments: 12,
     firstDueDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10), remarks: '',
   });
 
-  useEffect(() => {
-    Promise.all([api.get('/clients'), api.get('/products')]).then(([c, p]) => {
-      setClients(c.data);
-      setProducts(p.data.filter((x) => x.active));
-    });
-  }, []);
+  const { data, error, loading } = useLoad(() =>
+    Promise.all([api.get('/clients'), api.get('/products')]).then(([c, p]) => ({
+      clients: c.data || [],
+      products: (p.data || []).filter((x) => x.active),
+    }))
+  );
+  const clients = data?.clients || [];
+  const products = data?.products || [];
 
   const submit = async (e) => {
     e.preventDefault();
     setErr('');
+    setSaving(true);
     try {
-      const { data } = await api.post('/loans', { ...form, principal: +form.principal, numberOfInstallments: +form.numberOfInstallments });
-      nav(`/loans/${data._id}`);
+      const { data } = await api.post('/loans', {
+        ...form,
+        principal: +form.principal,
+        numberOfInstallments: +form.numberOfInstallments,
+      });
+      nav(withShare(`/loans/${data._id}`));
     } catch (e) {
-      setErr(e.response?.data?.message || 'Failed to create loan');
+      setErr(errorMessage(e));
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
     <div className="max-w-xl">
       <h1 className="text-2xl font-semibold mb-4">New Loan</h1>
-      {err && <div className="bg-red-50 text-red-700 text-sm rounded-lg p-2 mb-3">{err}</div>}
+      {(err || error) && <div role="alert" className="bg-red-50 text-red-700 text-sm rounded-lg p-2 mb-3">{err || error}</div>}
+      {loading && <p className="text-slate-500 text-sm mb-3">Loading clients and products...</p>}
       <form onSubmit={submit} className="bg-white p-6 rounded-xl border border-slate-200 space-y-3">
         <div>
           <label className="text-sm font-medium">Client</label>
@@ -76,7 +87,9 @@ export default function NewLoan() {
           <textarea value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })}
             className="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1" rows={2} />
         </div>
-        <button type="submit" className="w-full bg-brand-600 text-white py-2 rounded-lg">Create loan (pending approval)</button>
+        <button type="submit" disabled={saving || loading} className="w-full bg-brand-600 text-white py-2 rounded-lg disabled:opacity-60">
+          {saving ? 'Creating...' : 'Create loan (pending approval)'}
+        </button>
       </form>
     </div>
   );

@@ -1,53 +1,70 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../api/client.js';
 import Modal from '../components/Modal.jsx';
 import Badge from '../components/Badge.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useLoad, errorMessage } from '../utils/useLoad.js';
 
 const fmt = (n) => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(n || 0);
 
 export default function LoanDetail() {
   const { id } = useParams();
   const { user } = useAuth();
-  const [loan, setLoan] = useState(null);
   const [payOpen, setPayOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('cash');
   const [err, setErr] = useState('');
-  const [payments, setPayments] = useState([]);
+  const [busy, setBusy] = useState(false);
 
-  const load = async () => {
-    const { data } = await api.get(`/loans/${id}`);
-    setLoan(data);
-    const p = await api.get(`/payments?loan=${id}`);
-    setPayments(p.data);
-  };
-  useEffect(() => { load(); }, [id]);
+  const { data, error, loading, reload } = useLoad(async () => {
+    const [loanRes, paymentRes] = await Promise.all([
+      api.get(`/loans/${id}`),
+      api.get(`/payments?loan=${id}`),
+    ]);
+    return { loan: loanRes.data, payments: paymentRes.data || [] };
+  }, [id]);
 
   const act = async (action, body) => {
     setErr('');
+    setBusy(true);
     try {
       await api.patch(`/loans/${id}/${action}`, body);
-      load();
+      await reload();
     } catch (e) {
-      setErr(e.response?.data?.message || 'Action failed');
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(false);
     }
   };
 
   const submitPayment = async (e) => {
     e.preventDefault();
     setErr('');
+    setBusy(true);
     try {
       await api.post('/payments', { loanId: id, amount: +amount, method });
-      setPayOpen(false); setAmount(''); load();
+      setPayOpen(false);
+      setAmount('');
+      await reload();
     } catch (e) {
-      setErr(e.response?.data?.message || 'Payment failed');
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(false);
     }
   };
 
-  if (!loan) return <p className="text-slate-500">Loading...</p>;
+  const loan = data?.loan;
+  if (!loan && loading) return <p className="text-slate-500">Loading...</p>;
+  if (!loan) return (
+    <div role="alert" className="bg-red-50 text-red-700 text-sm rounded-lg p-4">
+      {error || 'Could not load this loan.'}
+      <button onClick={reload} className="ml-3 underline">Retry</button>
+    </div>
+  );
 
+  const schedule = Array.isArray(loan.schedule) ? loan.schedule : [];
+  const payments = Array.isArray(data?.payments) ? data.payments : [];
   const canApprove = user?.role === 'admin' && loan.status === 'pending';
   const canDisburse = ['admin', 'officer'].includes(user?.role) && loan.status === 'approved';
   const canPay = ['admin', 'officer', 'collector'].includes(user?.role) && ['disbursed', 'active'].includes(loan.status);
@@ -62,7 +79,11 @@ export default function LoanDetail() {
         <Badge status={loan.status} />
       </div>
 
-      {err && <div className="bg-red-50 text-red-700 text-sm rounded-lg p-2">{err}</div>}
+      {(err || error) && (
+        <div role="alert" className="bg-red-50 text-red-700 text-sm rounded-lg p-2">
+          {err || error} <button onClick={reload} className="underline ml-2">Retry</button>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[['Principal', loan.principal], ['Total Payable', loan.totalPayable], ['Paid', loan.totalPaid], ['Outstanding', loan.outstanding]].map(([k, v]) => (
@@ -76,12 +97,12 @@ export default function LoanDetail() {
       <div className="flex gap-2 flex-wrap">
         {canApprove && (
           <>
-            <button onClick={() => act('approve')} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm">Approve</button>
-            <button onClick={() => act('reject', { reason: 'Rejected by admin' })} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm">Reject</button>
+            <button disabled={busy} onClick={() => act('approve')} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60">Approve</button>
+            <button disabled={busy} onClick={() => act('reject', { reason: 'Rejected by admin' })} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60">Reject</button>
           </>
         )}
         {canDisburse && (
-          <button onClick={() => act('disburse')} className="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm">Disburse</button>
+          <button disabled={busy} onClick={() => act('disburse')} className="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60">Disburse</button>
         )}
         {canPay && (
           <button onClick={() => setPayOpen(true)} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm">Record Payment</button>
@@ -104,8 +125,8 @@ export default function LoanDetail() {
             </tr>
           </thead>
           <tbody>
-            {loan.schedule.map((i) => (
-              <tr key={i._id} className="border-t border-slate-100">
+            {schedule.map((i, idx) => (
+              <tr key={i._id || idx} className="border-t border-slate-100">
                 <td className="p-3">{i.no}</td>
                 <td className="p-3">{new Date(i.dueDate).toLocaleDateString()}</td>
                 <td className="p-3">{fmt(i.principalDue)}</td>
@@ -116,6 +137,9 @@ export default function LoanDetail() {
                 <td className="p-3"><Badge status={i.overdue ? 'overdue' : i.status} /></td>
               </tr>
             ))}
+            {schedule.length === 0 && (
+              <tr><td colSpan={8} className="p-4 text-center text-slate-400">No schedule available</td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -156,7 +180,9 @@ export default function LoanDetail() {
             className="w-full border border-slate-300 rounded-lg px-3 py-2">
             {['cash', 'bank', 'mobile_money', 'cheque'].map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
-          <button type="submit" className="w-full bg-brand-600 text-white py-2 rounded-lg">Confirm</button>
+          <button type="submit" disabled={busy} className="w-full bg-brand-600 text-white py-2 rounded-lg disabled:opacity-60">
+            {busy ? 'Saving...' : 'Confirm'}
+          </button>
         </form>
       </Modal>
     </div>
