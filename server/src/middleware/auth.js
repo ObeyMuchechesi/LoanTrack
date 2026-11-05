@@ -1,21 +1,29 @@
-import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { verifyToken } from '../utils/token.js';
 
-const secret = process.env.JWT_SECRET || 'loantrack-dev-secret-change-me';
+// Some hosting reverse proxies inject their own Authorization header for
+// share-link access. A dedicated header keeps application JWTs unambiguous.
+export const TOKEN_HEADER = 'x-loantrack-token';
 
 export async function protect(req, res, next) {
   try {
+    const custom = req.headers[TOKEN_HEADER];
     const header = req.headers.authorization || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    const token = custom
+      ? String(custom).replace(/^Bearer\s+/i, '')
+      : header.startsWith('Bearer ')
+        ? header.slice(7)
+        : null;
     if (!token) return res.status(401).json({ message: 'Not authenticated' });
 
-    const payload = jwt.verify(token, secret);
+    const payload = verifyToken(token);
     const user = await User.findById(payload.id);
     if (!user || !user.active) return res.status(401).json({ message: 'Invalid user' });
 
     req.user = user;
     next();
-  } catch {
+  } catch (err) {
+    console.warn(`[auth] rejected token: ${err.name}: ${err.message}`);
     res.status(401).json({ message: 'Invalid token' });
   }
 }

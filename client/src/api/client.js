@@ -6,7 +6,12 @@ const api = axios.create({
 
 api.interceptors.request.use((cfg) => {
   const t = localStorage.getItem('token');
-  if (t) cfg.headers.Authorization = `Bearer ${t}`;
+  if (t) {
+    // Dedicated header first: some hosting proxies override `Authorization`
+    // with their own share-link credentials.
+    cfg.headers['X-LoanTrack-Token'] = t;
+    cfg.headers.Authorization = `Bearer ${t}`;
+  }
   return cfg;
 });
 

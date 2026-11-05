@@ -1,8 +1,8 @@
+import './config/env.js';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,10 +12,6 @@ import routes from './routes/index.js';
 import { errorHandler } from './middleware/error.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// Works both when started from server/ (dev) and from the repo root (production/deploy).
-dotenv.config();
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
 

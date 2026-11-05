@@ -1,11 +1,6 @@
-import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-
-const secret = process.env.JWT_SECRET || 'loantrack-dev-secret-change-me';
-
-const signToken = (id) =>
-  jwt.sign({ id }, secret, { expiresIn: process.env.JWT_EXPIRES || '7d' });
+import { signToken } from '../utils/token.js';
 
 export const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
